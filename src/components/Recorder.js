@@ -1,59 +1,54 @@
 'use client';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from 'react';
 
-export default function Recorder({ onTranscript }) {
-  const [listening, setListening] = useState(false);
+export default function Recorder({ onResult, listening, onEnd }) {
   const recognitionRef = useRef(null);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("SpeechRecognition not supported in this browser");
+      alert('Speech Recognition is not supported');
       return;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
-        .map(result => result[0].transcript)
+        .map((result) => result[0].transcript)
         .join('');
-      onTranscript(transcript);
+      onResult(transcript);
     };
 
     recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
+      console.error('Speech recognition error:', event.error);
+    };
+
+    recognition.onend = () => {
+      onEnd?.();
     };
 
     recognitionRef.current = recognition;
-  }, [onTranscript]);
+  }, [onResult, onEnd]);
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) return;
+  useEffect(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
 
     if (listening) {
-      recognitionRef.current.stop();
-      setListening(false);
+      recognition.start();
     } else {
-      recognitionRef.current.start();
-      setListening(true);
+      recognition.stop();
     }
-  };
 
-  return (
-    <div className="flex flex-col items-center gap-4 mt-8">
-      <button
-        onClick={toggleListening}
-        className={`px-6 py-3 rounded-xl text-white font-bold ${
-          listening ? 'bg-red-600' : 'bg-green-600'
-        }`}
-      >
-        {listening ? '🛑 Stop Listening' : '🎙 Start Listening'}
-      </button>
-    </div>
-  );
+    return () => {
+      recognition?.stop();
+    };
+  }, [listening]);
+
+  return null;
 }

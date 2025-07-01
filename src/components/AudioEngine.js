@@ -10,6 +10,7 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
   const convolverNode = useRef(null);
   const delayNode = useRef(null);
   const filterNode = useRef(null);
+  const lastRenderedBufferRef = useRef(null);
 
   useEffect(() => {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -35,7 +36,7 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
     return () => ctx.close();
   }, [impulseUrl]);
 
-  const connectChain = (buffer, rate = 1.0) => {
+  const connectChain = (buffer, rate = 1.0, saveBuffer = false) => {
     const ctx = contextRef.current;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -45,6 +46,9 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
     gainNode.current.connect(ctx.destination);
     source.start();
     sourceRef.current = source;
+    if (saveBuffer) {
+      lastRenderedBufferRef.current = buffer;
+    }
   };
 
   useImperativeHandle(ref, () => ({
@@ -52,7 +56,7 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
       fetch(srcRef.current)
         .then((res) => res.arrayBuffer())
         .then((buffer) => contextRef.current.decodeAudioData(buffer))
-        .then((decoded) => connectChain(decoded));
+        .then((decoded) => connectChain(decoded, 1.0, true));
     },
 
     stop: () => {
@@ -93,14 +97,14 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
       fetch(srcRef.current)
         .then((res) => res.arrayBuffer())
         .then((buffer) => contextRef.current.decodeAudioData(buffer))
-        .then((decoded) => connectChain(decoded, Math.pow(2, 2 / 12)));
+        .then((decoded) => connectChain(decoded, Math.pow(2, 2 / 12), true));
     },
 
     pitchShiftDown: () => {
       fetch(srcRef.current)
         .then((res) => res.arrayBuffer())
         .then((buffer) => contextRef.current.decodeAudioData(buffer))
-        .then((decoded) => connectChain(decoded, Math.pow(2, -2 / 12)));
+        .then((decoded) => connectChain(decoded, Math.pow(2, -2 / 12), true));
     },
 
     increaseGain: () => {
@@ -123,20 +127,15 @@ const AudioEngine = forwardRef(({ src, impulseUrl }, ref) => {
     },
 
     async download() {
-      const ctx = new OfflineAudioContext(2, 44100 * 40, 44100);
-      const res = await fetch(srcRef.current);
-      const buffer = await res.arrayBuffer();
-      const decoded = await ctx.decodeAudioData(buffer);
-      const source = ctx.createBufferSource();
-      source.buffer = decoded;
-
-      const gain = ctx.createGain();
-      source.connect(gain);
-      gain.connect(ctx.destination);
-      source.start(0);
-
-      const rendered = await ctx.startRendering();
-      const wavBlob = bufferToWav(rendered);
+      let buffer = lastRenderedBufferRef.current;
+      if (!buffer) {
+        // fallback to original if nothing played yet
+        const ctx = new OfflineAudioContext(2, 44100 * 40, 44100);
+        const res = await fetch(srcRef.current);
+        const arrBuf = await res.arrayBuffer();
+        buffer = await ctx.decodeAudioData(arrBuf);
+      }
+      const wavBlob = bufferToWav(buffer);
       const url = URL.createObjectURL(wavBlob);
       const a = document.createElement('a');
       a.href = url;
